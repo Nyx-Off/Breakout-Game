@@ -1,7 +1,7 @@
 
 # Breakout Game
 
-![Game Screenshot](https://github.com/Nyx-Off/Breakout-Game/blob/main/screenshot.png)
+![Game Screenshot](https://github.com/Nyx-Off/Breakout-Game/blob/main/image.png)
 
 ## 🎮 Introduction
 **Breakout Game** est une réinvention moderne du classique jeu d'arcade Breakout, développé en utilisant HTML, CSS, JavaScript, et PHP pour une gestion robuste des scores. Le joueur contrôle une raquette pour faire rebondir une balle et détruire des briques, tout en essayant d'obtenir le meilleur score possible.
