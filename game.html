@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Casse-Briques</title>
+    <style>
+      /* Les styles restent inchangés */
+      body {
+        font-family: "Roboto", sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #1a1a2e;
+        color: #fff;
+        margin: 0;
+        padding: 20px;
+        min-height: 100vh;
+      }
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+      }
+      #gameCanvas {
+        border: 3px solid #16213e;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        image-rendering: optimizeSpeed;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: optimize-contrast;
+        image-rendering: pixelated;
+        -ms-interpolation-mode: nearest-neighbor;
+      }
+      #scoreBoard {
+        display: flex;
+        justify-content: space-between;
+        width: 800px;
+        margin-top: 20px;
+        font-size: 1.5rem;
+        background-color: #16213e;
+        padding: 15px;
+        border-radius: 10px;
+      }
+      #startButton {
+        margin-top: 20px;
+        padding: 15px 30px;
+        font-size: 1.2rem;
+        background-color: #0f3460;
+        color: white;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s;
+        border-radius: 5px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      #startButton:hover {
+        background-color: #e94560;
+        transform: scale(1.05);
+      }
+      #leaderboard {
+        margin-top: 30px;
+        width: 800px;
+        background-color: #16213e;
+        border-radius: 10px;
+        padding: 20px;
+      }
+      #leaderboard h2 {
+        text-align: center;
+        margin-bottom: 15px;
+        font-size: 2rem;
+      }
+      #leaderboardTable {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      #leaderboardTable th,
+      #leaderboardTable td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #0f3460;
+      }
+      #leaderboardTable th {
+        background-color: #0f3460;
+        color: #fff;
+        text-transform: uppercase;
+      }
+      #leaderboardTable tr:nth-child(even) {
+        background-color: #1e2a4a;
+      }
+      #leaderboardTable tr:hover {
+        background-color: #e94560;
+        transition: background-color 0.3s;
+      }
+      #fpsCounter {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-size: 1rem;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 5px 10px;
+        border-radius: 5px;
+      }
+    </style>
+    <link rel="icon" href="images/favicon.png" type="image/x-icon" />
+  </head>
+  <body>
+    <h1>Casse-Briques</h1>
+    <div id="fpsCounter">FPS: 0</div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="scoreBoard">
+      <span>Score: <span id="score">0</span></span>
+      <span>High Score: <span id="hiScore">0</span></span>
+    </div>
+    <button id="startButton">Démarrer</button>
+
+    <div id="leaderboard">
+      <h2>Tableau des Scores</h2>
+      <table id="leaderboardTable">
+        <thead>
+          <tr>
+            <th>Rang</th>
+            <th>Pseudo</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardBody">
+          <!--  scores ajoutés dynamiquement -->
+        </tbody>
+      </table>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      ctx.imageSmoothingEnabled = false;
+      const scoreElement = document.getElementById("score");
+      const hiScoreElement = document.getElementById("hiScore");
+      const startButton = document.getElementById("startButton");
+      const leaderboardBody = document.getElementById("leaderboardBody");
+      const fpsCounter = document.getElementById("fpsCounter");
+
+      let score = 0;
+      let hiScore = localStorage.getItem("hiScore") || 0;
+      hiScoreElement.textContent = hiScore;
+
+      const ball = {
+        x: canvas.width / 2,
+        y: canvas.height - 30,
+        dx: 4,
+        dy: -4,
+        radius: 10,
+        speed: 4,
+        maxSpeed: 8,
+      };
+
+      const paddle = {
+        width: 150,
+        height: 15,
+        x: (canvas.width - 150) / 2,
+        speed: 8,
+      };
+
+      const brickRowCount = 8;
+      const brickColumnCount = 5;
+      const brickWidth = 90;
+      const brickHeight = 25;
+      const brickPadding = 10;
+      const brickOffsetTop = 30;
+      const brickOffsetLeft =
+        (canvas.width -
+          ((brickWidth + brickPadding) * brickRowCount - brickPadding)) /
+        2;
+
+      const bricks = [];
+      for (let c = 0; c < brickColumnCount; c++) {
+        bricks[c] = [];
+        for (let r = 0; r < brickRowCount; r++) {
+          bricks[c][r] = { x: 0, y: 0, status: 1 };
+        }
+      }
+
+      let rightPressed = false;
+      let leftPressed = false;
+      let gameRunning = false;
+      let lastTime = 0;
+      let fpsUpdateInterval = 500;
+      let lastFpsUpdate = 0;
+      let frameCount = 0;
+
+      document.addEventListener("keydown", keyDownHandler);
+      document.addEventListener("keyup", keyUpHandler);
+      document.addEventListener("mousemove", mouseMoveHandler);
+      startButton.addEventListener("click", startGame);
+
+      function keyDownHandler(e) {
+        if (e.key === "Right" || e.key === "ArrowRight") {
+          rightPressed = true;
+        } else if (e.key === "Left" || e.key === "ArrowLeft") {
+          leftPressed = true;
+        }
+      }
+
+      function keyUpHandler(e) {
+        if (e.key === "Right" || e.key === "ArrowRight") {
+          rightPressed = false;
+        } else if (e.key === "Left" || e.key === "ArrowLeft") {
+          leftPressed = false;
+        }
+      }
+
+      function mouseMoveHandler(e) {
+        const relativeX = e.clientX - canvas.offsetLeft;
+        if (relativeX > 0 && relativeX < canvas.width) {
+          paddle.x = relativeX - paddle.width / 2;
+        }
+      }
+
+      function collisionDetection() {
+        for (let c = 0; c < brickColumnCount; c++) {
+          for (let r = 0; r < brickRowCount; r++) {
+            const b = bricks[c][r];
+            if (b.status === 1) {
+              if (
+                ball.x + ball.radius > b.x &&
+                ball.x - ball.radius < b.x + brickWidth &&
+                ball.y + ball.radius > b.y &&
+                ball.y - ball.radius < b.y + brickHeight
+              ) {
+                const overlapLeft = ball.x + ball.radius - b.x;
+                const overlapRight = b.x + brickWidth - (ball.x - ball.radius);
+                const overlapTop = ball.y + ball.radius - b.y;
+                const overlapBottom =
+                  b.y + brickHeight - (ball.y - ball.radius);
+
+                const minOverlap = Math.min(
+                  overlapLeft,
+                  overlapRight,
+                  overlapTop,
+                  overlapBottom
+                );
+
+                if (minOverlap === overlapLeft || minOverlap === overlapRight) {
+                  ball.dx = -ball.dx;
+                } else {
+                  ball.dy = -ball.dy;
+                }
+
+                ball.speed = Math.min(ball.speed * 1.01, ball.maxSpeed);
+                updateBallVelocity();
+
+                b.status = 0;
+                score++;
+                scoreElement.textContent = score;
+                if (score > hiScore) {
+                  hiScore = score;
+                  hiScoreElement.textContent = hiScore;
+                  localStorage.setItem("hiScore", hiScore);
+                }
+                if (score === brickRowCount * brickColumnCount) {
+                  gameOver("Bravo ! Vous avez gagné !");
+                }
+              }
+            }
+          }
+        }
+      }
+
+      function updateBallVelocity() {
+        const angle = Math.atan2(ball.dy, ball.dx);
+        ball.dx = ball.speed * Math.cos(angle);
+        ball.dy = ball.speed * Math.sin(angle);
+      }
+
+      function drawBall() {
+        ctx.beginPath();
+        ctx.arc(
+          Math.round(ball.x),
+          Math.round(ball.y),
+          ball.radius,
+          0,
+          Math.PI * 2
+        );
+        ctx.fillStyle = "#e94560";
+        ctx.fill();
+        ctx.closePath();
+      }
+
+      function drawPaddle() {
+        ctx.fillStyle = "#0f3460";
+        ctx.fillRect(
+          Math.round(paddle.x),
+          canvas.height - paddle.height,
+          paddle.width,
+          paddle.height
+        );
+      }
+
+      function drawBricks() {
+        for (let c = 0; c < brickColumnCount; c++) {
+          for (let r = 0; r < brickRowCount; r++) {
+            if (bricks[c][r].status === 1) {
+              const brickX = r * (brickWidth + brickPadding) + brickOffsetLeft;
+              const brickY = c * (brickHeight + brickPadding) + brickOffsetTop;
+              bricks[c][r].x = brickX;
+              bricks[c][r].y = brickY;
+              ctx.fillStyle = `hsl(${c * 30 + r * 10}, 70%, 60%)`;
+              ctx.fillRect(
+                Math.round(brickX),
+                Math.round(brickY),
+                brickWidth,
+                brickHeight
+              );
+            }
+          }
+        }
+      }
+
+      function update(currentTime) {
+        if (!lastTime) lastTime = currentTime;
+        const deltaTime = (currentTime - lastTime) / 1000;
+        lastTime = currentTime;
+
+        frameCount++;
+        if (currentTime - lastFpsUpdate > fpsUpdateInterval) {
+          const fps = Math.round(
+            frameCount / ((currentTime - lastFpsUpdate) / 1000)
+          );
+          fpsCounter.textContent = `FPS: ${fps}`;
+          frameCount = 0;
+          lastFpsUpdate = currentTime;
+        }
+
+        if (
+          ball.x + ball.dx > canvas.width - ball.radius ||
+          ball.x + ball.dx < ball.radius
+        ) {
+          ball.dx = -ball.dx;
+        }
+        if (ball.y + ball.dy < ball.radius) {
+          ball.dy = -ball.dy;
+        } else if (ball.y + ball.dy > canvas.height - ball.radius) {
+          if (ball.x > paddle.x && ball.x < paddle.x + paddle.width) {
+            let hitPoint = (ball.x - paddle.x) / paddle.width;
+            let angle = ((hitPoint - 0.5) * Math.PI) / 3; // Angle entre -60° et 60°
+            ball.dx = ball.speed * Math.sin(angle);
+            ball.dy = -ball.speed * Math.cos(angle);
+          } else {
+            gameOver("Game Over");
+            return;
+          }
+        }
+
+        if (rightPressed && paddle.x < canvas.width - paddle.width) {
+          paddle.x += paddle.speed * deltaTime * 144;
+        } else if (leftPressed && paddle.x > 0) {
+          paddle.x -= paddle.speed * deltaTime * 144;
+        }
+
+        ball.x += ball.dx * deltaTime * 144;
+        ball.y += ball.dy * deltaTime * 144;
+
+        collisionDetection();
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBricks();
+        drawBall();
+        drawPaddle();
+
+        if (gameRunning) {
+          requestAnimationFrame(update);
+        }
+      }
+
+      function startGame() {
+        if (!gameRunning) {
+          gameRunning = true;
+          score = 0;
+          scoreElement.textContent = score;
+          resetBricks();
+          resetBall();
+          lastTime = 0;
+          requestAnimationFrame(update);
+        }
+      }
+
+      function resetBricks() {
+        for (let c = 0; c < brickColumnCount; c++) {
+          for (let r = 0; r < brickRowCount; r++) {
+            bricks[c][r].status = 1;
+          }
+        }
+      }
+
+      function resetBall() {
+        ball.x = canvas.width / 2;
+        ball.y = canvas.height - 30;
+        ball.speed = 4;
+        ball.dx = 4;
+        ball.dy = -4;
+      }
+
+      function gameOver(message) {
+        gameRunning = false;
+        ctx.font = "30px Roboto";
+        ctx.fillStyle = "#e94560";
+        ctx.textAlign = "center";
+        ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+
+        const pseudo = prompt(
+          "Entrez votre pseudo pour enregistrer votre score :"
+        );
+        if (pseudo) {
+          saveScore(pseudo, score);
+          updateLeaderboard();
+        }
+      }
+
+      function saveScore(pseudo, score) {
+        fetch("https://bensalemdev.fr/save_score.php", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: `pseudo=${encodeURIComponent(
+            pseudo
+          )}&score=${encodeURIComponent(score)}`,
+        })
+          .then((response) => response.text())
+          .then((data) => {
+            console.log(data);
+            updateLeaderboard();
+          })
+          .catch((error) => console.error("Erreur:", error));
+      }
+
+      function updateLeaderboard() {
+        fetch("https://bensalemdev.fr/get_scores.php")
+          .then((response) => response.text())
+          .then((data) => {
+            //console.log("Réponse reçue du serveur : ", data);
+            const scores = JSON.parse(data);
+            leaderboardBody.innerHTML = "";
+            scores.forEach((score, index) => {
+              const row = leaderboardBody.insertRow();
+              row.insertCell(0).textContent = index + 1;
+              row.insertCell(1).textContent = score.pseudo;
+              row.insertCell(2).textContent = score.score;
+            });
+          })
+          .catch((error) => console.error("Erreur:", error));
+      }
+
+      // Charger le tableau des scores au chargement de la page
+      document.addEventListener("DOMContentLoaded", updateLeaderboard);
+
+      // Optimisations pour une meilleure performance
+      canvas.style.willChange = "transform";
+    </script>
+  </body>
+</html>
